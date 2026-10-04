@@ -19,3 +19,12 @@ Free, with no time limit
 
 # Usage
 Click the extension icon on any tab to start recording. Stop it when you're done and download the video.
+
+# multi-tab-recorder/
+├── manifest.json
+├── background.js
+├── offscreen.html
+├── offscreen.js
+├── popup.html
+├── popup.css
+└── popup.js
