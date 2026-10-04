@@ -3,6 +3,11 @@
   "name": "Multi-Tab MP4 Recorder",
   "version": "1.0.0",
   "description": "Record multiple Chrome tabs at the same time and save them as MP4.",
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
   "permissions": [
     "activeTab",
     "tabCapture",
@@ -15,7 +20,15 @@
   },
   "action": {
     "default_popup": "src/popup.html",
-    "default_title": "Multi-Tab Recorder"
+    "default_title": "Multi-Tab Recorder",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
   },
   "minimum_chrome_version": "116"
 }
