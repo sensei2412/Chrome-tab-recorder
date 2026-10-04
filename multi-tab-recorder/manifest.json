@@ -1,0 +1,19 @@
+{
+  "manifest_version": 3,
+  "name": "Multi-Tab Video Recorder",
+  "version": "1.0.0",
+  "description": "Record multiple Chrome tabs simultaneously.",
+  "permissions": [
+    "tabCapture",
+    "tabs",
+    "downloads",
+    "offscreen"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html"
+  },
+  "minimum_chrome_version": "116"
+}
