@@ -1,0 +1,99 @@
+body {
+  width: 400px;
+
+  margin: 0;
+
+  padding: 16px;
+
+  font-family: Arial, sans-serif;
+
+  background: #f5f5f5;
+}
+
+
+h2 {
+  margin-top: 0;
+}
+
+
+p {
+  font-size: 13px;
+
+  color: #666;
+}
+
+
+.tab {
+  display: flex;
+
+  align-items: center;
+
+  gap: 8px;
+
+  padding: 9px;
+
+  margin-bottom: 6px;
+
+  background: white;
+
+  border-radius: 8px;
+}
+
+
+.tab-title {
+  flex: 1;
+
+  overflow: hidden;
+
+  white-space: nowrap;
+
+  text-overflow: ellipsis;
+}
+
+
+.status {
+  font-size: 11px;
+
+  color: #777;
+}
+
+
+.buttons {
+  display: grid;
+
+  gap: 7px;
+
+  margin-top: 15px;
+}
+
+
+button {
+  border: none;
+
+  border-radius: 7px;
+
+  padding: 10px;
+
+  cursor: pointer;
+}
+
+
+#recordSelected {
+  background: #222;
+
+  color: white;
+}
+
+
+#stopAll {
+  background: #d33;
+
+  color: white;
+}
+
+
+.info {
+  font-size: 11px;
+
+  color: #888;
+}

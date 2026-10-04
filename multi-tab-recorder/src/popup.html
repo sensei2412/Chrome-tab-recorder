@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+
+  <meta charset="UTF-8">
+
+  <title>
+    Multi-Tab Recorder
+  </title>
+
+  <link
+    rel="stylesheet"
+    href="./popup.css"
+  >
+
+</head>
+
+<body>
+
+  <h2>
+    Multi-Tab Recorder
+  </h2>
+
+  <p>
+    Select the tabs you want to record.
+  </p>
+
+
+  <div id="tabs"></div>
+
+
+  <div class="buttons">
+
+    <button id="recordSelected">
+      ● Record selected
+    </button>
+
+    <button id="pauseAll">
+      ⏸ Pause all
+    </button>
+
+    <button id="resumeAll">
+      ▶ Resume all
+    </button>
+
+    <button id="stopAll">
+      ■ Stop & Download MP4
+    </button>
+
+  </div>
+
+
+  <p class="info">
+    Video only. MP4 conversion happens locally.
+  </p>
+
+
+  <script
+    type="module"
+    src="./popup.js"
+  ></script>
+
+</body>
+
+</html>
