@@ -47,15 +47,18 @@ p {
 
 .tab-title {
   flex: 1;
+  min-width: 70px;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
 
 .status {
+  max-width: 230px;
   font-size: 11px;
   color: #777;
-  white-space: nowrap;
+  text-align: right;
+  overflow-wrap: anywhere;
 }
 
 .status.recording {

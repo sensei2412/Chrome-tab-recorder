@@ -61,6 +61,16 @@ function loadFFmpeg() {
 // HELPERS
 // ----------------------------------------
 
+function withTimeout(promise, ms, message) {
+  let timer;
+
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(message)), ms);
+  });
+
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
 function sanitizeFilename(name) {
   const cleaned = String(name || "")
     .replace(/[<>:"/\\|?*\x00-\x1f]/g, "_")
@@ -91,28 +101,48 @@ function describe(session) {
   };
 }
 
-function pickMimeType() {
-  const options = [
-    "video/webm;codecs=vp9",
-    "video/webm;codecs=vp8",
-    "video/webm"
-  ];
+function pickMimeType(preferMp4) {
+  const mp4 = ["video/mp4;codecs=avc1", "video/mp4"];
+  const webm = ["video/webm;codecs=vp9", "video/webm;codecs=vp8", "video/webm"];
 
-  return options.find((type) => MediaRecorder.isTypeSupported(type));
+  // Newer Chrome can record MP4 directly, which needs no slow conversion.
+  const options = preferMp4 ? [...mp4, ...webm] : webm;
+  const mimeType = options.find((type) => MediaRecorder.isTypeSupported(type));
+
+  return { mimeType, native: Boolean(mimeType?.startsWith("video/mp4")) };
 }
 
-function saveBlob(blob, filename) {
+async function saveBlob(blob, filename) {
   const url = URL.createObjectURL(blob);
-
-  chrome.runtime.sendMessage({
-    target: "background",
-    type: "DOWNLOAD",
-    url,
-    filename: `Tab Recordings/${filename}`
-  });
 
   // Free the memory later, after the download has started.
   setTimeout(() => URL.revokeObjectURL(url), 10 * 60 * 1000);
+
+  const extension = filename.slice(filename.lastIndexOf("."));
+  const names = [
+    filename,
+    // Plain name in case Chrome rejects the tab title as a filename.
+    `recording-${Date.now()}${extension}`
+  ];
+
+  let lastError = "Download failed.";
+
+  for (const name of names) {
+    const response = await chrome.runtime.sendMessage({
+      target: "background",
+      type: "DOWNLOAD",
+      url,
+      filename: `Tab Recordings/${name}`
+    });
+
+    if (response?.ok) {
+      return;
+    }
+
+    lastError = response?.error || lastError;
+  }
+
+  throw new Error(lastError);
 }
 
 function forgetLater(session) {
@@ -120,7 +150,7 @@ function forgetLater(session) {
     if (sessions.get(session.tabId) === session) {
       sessions.delete(session.tabId);
     }
-  }, 30 * 1000);
+  }, 10 * 60 * 1000);
 }
 
 
@@ -152,7 +182,8 @@ async function startRecording({ tabId, streamId, title, convert }) {
     }
   });
 
-  const mimeType = pickMimeType();
+  const wantMp4 = convert !== false;
+  const { mimeType, native } = pickMimeType(wantMp4);
   const recorder = new MediaRecorder(stream, {
     ...(mimeType ? { mimeType } : {}),
     videoBitsPerSecond: 4_000_000
@@ -161,7 +192,8 @@ async function startRecording({ tabId, streamId, title, convert }) {
   const session = {
     tabId,
     title: title || `Tab ${tabId}`,
-    convert: convert !== false,
+    convert: wantMp4,
+    nativeMp4: native,
     recorder,
     stream,
     chunks: [],
@@ -199,7 +231,9 @@ function finishRecording(session) {
 
   session.stream.getTracks().forEach((track) => track.stop());
 
-  const webm = new Blob(session.chunks, { type: "video/webm" });
+  const webm = new Blob(session.chunks, {
+    type: session.nativeMp4 ? "video/mp4" : "video/webm"
+  });
   session.chunks = [];
 
   if (webm.size === 0) {
@@ -211,11 +245,31 @@ function finishRecording(session) {
 
   const baseName = sanitizeFilename(session.title);
 
+  if (session.nativeMp4) {
+    saveBlob(webm, `${baseName}.mp4`)
+      .then(() => {
+        session.state = "done";
+        session.message = "Saved as MP4.";
+      })
+      .catch((error) => {
+        session.state = "error";
+        session.message = `Could not save: ${error.message}`;
+      })
+      .finally(() => forgetLater(session));
+    return;
+  }
+
   if (!session.convert) {
-    saveBlob(webm, `${baseName}.webm`);
-    session.state = "done";
-    session.message = "Saved as WebM.";
-    forgetLater(session);
+    saveBlob(webm, `${baseName}.webm`)
+      .then(() => {
+        session.state = "done";
+        session.message = "Saved as WebM.";
+      })
+      .catch((error) => {
+        session.state = "error";
+        session.message = `Could not save: ${error.message}`;
+      })
+      .finally(() => forgetLater(session));
     return;
   }
 
@@ -273,7 +327,7 @@ async function convertToMp4(session, webm, baseName) {
   currentConversion = session;
 
   try {
-    await loadFFmpeg();
+    await withTimeout(loadFFmpeg(), 90 * 1000, "Loading FFmpeg timed out");
 
     await ffmpeg.writeFile(inputName, await fetchFile(webm));
 
@@ -282,8 +336,8 @@ async function convertToMp4(session, webm, baseName) {
       // H.264 needs even width and height.
       "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2",
       "-c:v", "libx264",
-      "-preset", "veryfast",
-      "-crf", "23",
+      "-preset", "ultrafast",
+      "-crf", "28",
       "-pix_fmt", "yuv420p",
       "-movflags", "+faststart",
       outputName
@@ -295,7 +349,7 @@ async function convertToMp4(session, webm, baseName) {
 
     const data = await ffmpeg.readFile(outputName);
 
-    saveBlob(new Blob([data], { type: "video/mp4" }), `${baseName}.mp4`);
+    await saveBlob(new Blob([data], { type: "video/mp4" }), `${baseName}.mp4`);
 
     session.state = "done";
     session.progress = 100;
@@ -303,13 +357,18 @@ async function convertToMp4(session, webm, baseName) {
   } catch (error) {
     console.error("MP4 conversion failed:", error);
 
-    // Never lose the recording: save the original WebM instead.
-    saveBlob(webm, `${baseName}.webm`);
+    const reason = String(error?.message || error).slice(0, 160);
 
-    const reason = String(error?.message || error).slice(0, 120);
+    // Never lose the recording: save the original WebM instead.
+    try {
+      await saveBlob(webm, `${baseName}.webm`);
+      session.message = `MP4 failed (${reason}). Saved as WebM instead.`;
+    } catch (saveError) {
+      session.message =
+        `MP4 failed (${reason}) and saving failed: ${saveError.message}`;
+    }
 
     session.state = "error";
-    session.message = `MP4 failed (${reason}). Saved as WebM instead.`;
   } finally {
     currentConversion = null;
 
