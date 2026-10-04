@@ -10,11 +10,12 @@ So I'm building my own, for fun and convenience.
 Record multiple tabs at once
 Pause, stop, and download
 Free, with no time limit
-Install
-Download or clone this repo
-Go to chrome://extensions
-Turn on Developer mode
-Click Load unpacked and select the project folder
+
+# Install
+1. Download or clone this repo
+2. Go to chrome://extensions
+3. Turn on Developer mode
+4. Click Load unpacked and select the project folder
 
 # Usage
 Click the extension icon on any tab to start recording. Stop it when you're done and download the video.
