@@ -58,18 +58,24 @@ Notes:
 - Only video is recorded, not audio.
 - MP4 conversion runs in the browser and is slow for long recordings. Untick **Convert to MP4** to save the WebM directly.
 
-## Project structure
-
-```
-multi-tab-recorder/
-├── public/manifest.json      extension manifest (copied to dist/)
-├── scripts/copy-ffmpeg.js    copies FFmpeg core files before the build
+Chrome-tab-recorder/
+├── README.md
+├── .gitignore
+└── multi-tab-recorder/
+├── public/
+│ └── manifest.json extension manifest (copied to dist/)
+├── scripts/
+│ └── copy-ffmpeg.js copies the FFmpeg core files before the build
 ├── src/
-│   ├── popup.html/.css/.js   the popup you click
-│   ├── background.js         creates the offscreen page, saves downloads
-│   ├── offscreen.html/.js    records tabs and converts to MP4
-├── vite.config.js
-└── package.json
+│ ├── popup.html the popup you click
+│ ├── popup.css
+│ ├── popup.js start, pause, resume, stop, and the list of recordings
+│ ├── background.js creates the offscreen page, saves the downloads
+│ ├── offscreen.html
+│ └── offscreen.js records the tabs, saves MP4, falls back to FFmpeg
+├── vite.config.js build setup
+├── package.json
+└── package-lock.json
 ```
 
 ## Roadmap
@@ -80,5 +86,5 @@ multi-tab-recorder/
 - [x] Queue so conversions don't run at the same time
 - [x] Handle a tab closing mid-recording
 - [x] Filenames from tab titles
-- [ ] Download All after every conversion finishes
-- [ ] Audio recording
+- [x] Download All after every conversion finishes
+
