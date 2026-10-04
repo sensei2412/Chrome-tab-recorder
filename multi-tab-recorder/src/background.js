@@ -1,85 +1,100 @@
+// Background service worker.
+//
+// Its only jobs are:
+//   1. create the offscreen document (where MediaRecorder + FFmpeg run)
+//   2. forward "start recording" from the popup to the offscreen document
+//   3. save finished files with chrome.downloads
+//
+// The stream ID is NOT created here. Chrome only allows getMediaStreamId()
+// for a tab the user has just invoked the extension on (activeTab), so the
+// popup creates it for the tab it was opened on and sends it to us.
+
+let creatingOffscreen = null;
+
 async function ensureOffscreen() {
-  const contexts = await chrome.runtime.getContexts({});
+  const contexts = await chrome.runtime.getContexts({
+    contextTypes: ["OFFSCREEN_DOCUMENT"]
+  });
 
-  const exists = contexts.some(
-    context => context.contextType === "OFFSCREEN_DOCUMENT"
-  );
+  if (contexts.length > 0) {
+    return;
+  }
 
-  if (!exists) {
-    await chrome.offscreen.createDocument({
-      url: "src/offscreen.html",
-      reasons: ["USER_MEDIA"],
-      justification: "Record and convert Chrome tab video"
+  if (!creatingOffscreen) {
+    creatingOffscreen = chrome.offscreen
+      .createDocument({
+        url: "src/offscreen.html",
+        reasons: ["USER_MEDIA"],
+        justification: "Record Chrome tab video and convert it to MP4."
+      })
+      .finally(() => {
+        creatingOffscreen = null;
+      });
+  }
+
+  await creatingOffscreen;
+}
+
+async function sendToOffscreen(message) {
+  // The offscreen page may need a moment before its listener is ready.
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const response = await chrome.runtime.sendMessage({
+      target: "offscreen",
+      ...message
     });
+
+    if (response !== undefined) {
+      return response;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  }
+
+  throw new Error("The recorder did not respond. Try again.");
+}
+
+async function handleMessage(message) {
+  switch (message.type) {
+    case "START_RECORDING": {
+      await ensureOffscreen();
+
+      return sendToOffscreen({
+        type: "START",
+        tabId: message.tabId,
+        streamId: message.streamId,
+        title: message.title,
+        convert: message.convert
+      });
+    }
+
+    case "DOWNLOAD": {
+      await chrome.downloads.download({
+        url: message.url,
+        filename: message.filename,
+        saveAs: false,
+        conflictAction: "uniquify"
+      });
+
+      return { ok: true };
+    }
+
+    default:
+      return { ok: false, error: `Unknown message type: ${message.type}` };
   }
 }
 
-chrome.runtime.onMessage.addListener(async (message) => {
-
-  if (message.type === "START_RECORDING") {
-
-    try {
-
-      await ensureOffscreen();
-
-      const streamId =
-        await chrome.tabCapture.getMediaStreamId({
-          targetTabId: message.tabId
-        });
-
-      chrome.runtime.sendMessage({
-        type: "START_OFFSCREEN_RECORDING",
-        tabId: message.tabId,
-        streamId,
-        title: message.title
-      });
-
-    } catch (error) {
-
-      console.error(error);
-
-    }
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  // Ignore messages meant for the popup or the offscreen page.
+  if (message?.target !== "background") {
+    return false;
   }
 
-
-  if (message.type === "STOP_RECORDING") {
-
-    chrome.runtime.sendMessage({
-      type: "STOP_OFFSCREEN_RECORDING",
-      tabId: message.tabId
+  handleMessage(message)
+    .then(sendResponse)
+    .catch((error) => {
+      console.error("Background error:", error);
+      sendResponse({ ok: false, error: error?.message || String(error) });
     });
 
-  }
-
-
-  if (message.type === "PAUSE_RECORDING") {
-
-    chrome.runtime.sendMessage({
-      type: "PAUSE_OFFSCREEN_RECORDING",
-      tabId: message.tabId
-    });
-
-  }
-
-
-  if (message.type === "RESUME_RECORDING") {
-
-    chrome.runtime.sendMessage({
-      type: "RESUME_OFFSCREEN_RECORDING",
-      tabId: message.tabId
-    });
-
-  }
-
-
-  if (message.type === "DOWNLOAD_MP4") {
-
-    chrome.downloads.download({
-      url: message.url,
-      filename: message.filename,
-      saveAs: true
-    });
-
-  }
-
+  return true;
 });

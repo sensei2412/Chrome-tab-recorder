@@ -1,207 +1,194 @@
-const states = new Map();
+const listEl = document.getElementById("list");
+const messageEl = document.getElementById("message");
+const convertEl = document.getElementById("convert");
 
 
-async function loadTabs() {
+// ----------------------------------------
+// HELPERS
+// ----------------------------------------
 
-  const tabs =
-    await chrome.tabs.query({});
+function showMessage(text) {
+  messageEl.textContent = text || "";
+}
 
+function formatTime(ms) {
+  const total = Math.floor(ms / 1000);
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const seconds = total % 60;
+  const pad = (n) => String(n).padStart(2, "0");
 
-  const container =
-    document.getElementById("tabs");
+  return hours > 0
+    ? `${hours}:${pad(minutes)}:${pad(seconds)}`
+    : `${pad(minutes)}:${pad(seconds)}`;
+}
 
+// Talk to the offscreen page. If it does not exist yet, nothing is recording.
+async function sendToOffscreen(message) {
+  try {
+    return await chrome.runtime.sendMessage({ target: "offscreen", ...message });
+  } catch {
+    return undefined;
+  }
+}
 
-  container.innerHTML = "";
+async function getSessions() {
+  const response = await sendToOffscreen({ type: "GET_STATUS" });
+  return response?.sessions || [];
+}
 
+try {
+  convertEl.checked = localStorage.getItem("convert") !== "false";
+} catch {
+  // Storage can be unavailable. The default is fine.
+}
 
-  tabs
-    .filter(tab =>
-      tab.id &&
-      tab.url &&
-      !tab.url.startsWith("chrome://")
-    )
-    .forEach(tab => {
-
-      const row =
-        document.createElement("div");
-
-      row.className = "tab";
-
-
-      const checkbox =
-        document.createElement("input");
-
-      checkbox.type = "checkbox";
-
-      checkbox.dataset.tabId =
-        tab.id;
-
-
-      const title =
-        document.createElement("span");
-
-      title.className =
-        "tab-title";
-
-      title.textContent =
-        tab.title || tab.url;
-
-
-      const status =
-        document.createElement("span");
-
-      status.className =
-        "status";
-
-      status.textContent =
-        states.get(tab.id) || "";
+convertEl.onchange = () => {
+  try {
+    localStorage.setItem("convert", String(convertEl.checked));
+  } catch {
+    // Ignore.
+  }
+};
 
 
+// ----------------------------------------
+// LIST OF RECORDINGS
+// ----------------------------------------
+
+function button(label, onClick) {
+  const el = document.createElement("button");
+  el.textContent = label;
+  el.className = "small";
+  el.onclick = onClick;
+  return el;
+}
+
+function statusText(session) {
+  switch (session.state) {
+    case "recording":
+      return `Recording ${formatTime(session.elapsedMs)}`;
+    case "paused":
+      return `Paused ${formatTime(session.elapsedMs)}`;
+    case "stopping":
+      return "Stopping...";
+    case "queued":
+      return "Waiting to convert...";
+    case "converting":
+      return session.progress > 0
+        ? `Converting ${session.progress}%`
+        : "Converting...";
+    default:
+      return session.message || session.state;
+  }
+}
+
+function renderList(sessions) {
+  listEl.innerHTML = "";
+
+  for (const session of sessions) {
+    const row = document.createElement("div");
+    row.className = "tab";
+
+    const title = document.createElement("span");
+    title.className = "tab-title";
+    title.textContent = session.title;
+    title.title = session.title;
+
+    const status = document.createElement("span");
+    status.className = `status ${session.state}`;
+    status.textContent = statusText(session);
+
+    row.append(title, status);
+
+    if (session.state === "recording") {
       row.append(
-        checkbox,
-        title,
-        status
+        button("Pause", () => control("PAUSE", session.tabId)),
+        button("Stop", () => control("STOP", session.tabId))
       );
+    } else if (session.state === "paused") {
+      row.append(
+        button("Resume", () => control("RESUME", session.tabId)),
+        button("Stop", () => control("STOP", session.tabId))
+      );
+    }
 
+    listEl.appendChild(row);
+  }
+}
 
-      container.appendChild(row);
+async function refresh() {
+  renderList(await getSessions());
+}
 
-    });
-
+async function control(type, tabId) {
+  await sendToOffscreen({ type, tabId });
+  refresh();
 }
 
 
-document
-  .getElementById("recordSelected")
-  .onclick = async () => {
+// ----------------------------------------
+// RECORD THIS TAB
+// ----------------------------------------
 
-    const selected =
-      document.querySelectorAll(
-        "input[type=checkbox]:checked"
-      );
+document.getElementById("recordThis").onclick = async () => {
+  showMessage("");
 
+  try {
+    const [tab] = await chrome.tabs.query({
+      active: true,
+      currentWindow: true
+    });
 
-    for (const checkbox of selected) {
-
-      const tabId =
-        Number(
-          checkbox.dataset.tabId
-        );
-
-
-      const tab =
-        await chrome.tabs.get(tabId);
-
-
-      states.set(
-        tabId,
-        "Recording"
-      );
-
-
-      chrome.runtime.sendMessage({
-
-        type: "START_RECORDING",
-
-        tabId,
-
-        title:
-          tab.title || `Tab ${tabId}`
-
-      });
-
+    if (!tab?.id) {
+      showMessage("Could not find the current tab.");
+      return;
     }
 
+    if (/^(chrome|edge|about|chrome-extension|devtools):/.test(tab.url || "")) {
+      showMessage("Chrome's own pages cannot be recorded.");
+      return;
+    }
 
-    loadTabs();
+    const existing = (await getSessions()).find((s) => s.tabId === tab.id);
 
-  };
+    if (existing && ["recording", "paused"].includes(existing.state)) {
+      showMessage("This tab is already being recorded.");
+      return;
+    }
 
+    // This only works because the popup was opened on this tab (activeTab).
+    const streamId = await chrome.tabCapture.getMediaStreamId({
+      targetTabId: tab.id
+    });
 
-document
-  .getElementById("pauseAll")
-  .onclick = () => {
+    const response = await chrome.runtime.sendMessage({
+      target: "background",
+      type: "START_RECORDING",
+      tabId: tab.id,
+      streamId,
+      title: tab.title || `Tab ${tab.id}`,
+      convert: convertEl.checked
+    });
 
-    states.forEach(
-      (_, tabId) => {
+    if (!response?.ok) {
+      showMessage(response?.error || "Could not start recording.");
+    }
+  } catch (error) {
+    showMessage(error?.message || String(error));
+  }
 
-        states.set(
-          tabId,
-          "Paused"
-        );
+  refresh();
+};
 
-
-        chrome.runtime.sendMessage({
-
-          type: "PAUSE_RECORDING",
-
-          tabId
-
-        });
-
-      }
-    );
-
-
-    loadTabs();
-
-  };
-
-
-document
-  .getElementById("resumeAll")
-  .onclick = () => {
-
-    states.forEach(
-      (_, tabId) => {
-
-        states.set(
-          tabId,
-          "Recording"
-        );
+document.getElementById("pauseAll").onclick = () => control("PAUSE");
+document.getElementById("resumeAll").onclick = () => control("RESUME");
+document.getElementById("stopAll").onclick = () => control("STOP");
 
 
-        chrome.runtime.sendMessage({
+// ----------------------------------------
+// KEEP THE LIST UP TO DATE
+// ----------------------------------------
 
-          type: "RESUME_RECORDING",
-
-          tabId
-
-        });
-
-      }
-    );
-
-
-    loadTabs();
-
-  };
-
-
-document
-  .getElementById("stopAll")
-  .onclick = () => {
-
-    states.forEach(
-      (_, tabId) => {
-
-        chrome.runtime.sendMessage({
-
-          type: "STOP_RECORDING",
-
-          tabId
-
-        });
-
-      }
-    );
-
-
-    states.clear();
-
-    loadTabs();
-
-  };
-
-
-loadTabs();
+refresh();
+setInterval(refresh, 1000);

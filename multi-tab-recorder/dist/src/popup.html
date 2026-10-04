@@ -12,13 +12,26 @@
 
   <h1>Tab Recorder</h1>
 
-  <div id="tabs"></div>
+  <p class="info">
+    Open this popup on each tab you want to record, then click
+    "Record this tab".
+  </p>
+
+  <button id="recordThis">Record this tab</button>
+
+  <label class="option">
+    <input type="checkbox" id="convert" checked>
+    Convert to MP4 (slow for long recordings)
+  </label>
+
+  <p id="message" class="message"></p>
+
+  <div id="list"></div>
 
   <div class="buttons">
-    <button id="record">Record selected</button>
-    <button id="pause">Pause all</button>
-    <button id="resume">Resume all</button>
-    <button id="stop">Stop & Download MP4</button>
+    <button id="pauseAll">Pause all</button>
+    <button id="resumeAll">Resume all</button>
+    <button id="stopAll">Stop all &amp; save</button>
   </div>
 
 

@@ -2,8 +2,9 @@
   "manifest_version": 3,
   "name": "Multi-Tab MP4 Recorder",
   "version": "1.0.0",
-  "description": "Record multiple Chrome tabs and download them as MP4.",
+  "description": "Record multiple Chrome tabs at the same time and save them as MP4.",
   "permissions": [
+    "activeTab",
     "tabCapture",
     "tabs",
     "downloads",
@@ -13,7 +14,8 @@
     "service_worker": "src/background.js"
   },
   "action": {
-    "default_popup": "src/popup.html"
+    "default_popup": "src/popup.html",
+    "default_title": "Multi-Tab Recorder"
   },
   "minimum_chrome_version": "116"
 }

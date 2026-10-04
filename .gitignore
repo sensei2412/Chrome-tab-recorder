@@ -1,0 +1,5 @@
+node_modules/
+dist/
+
+# Copied from node_modules/@ffmpeg/core by "npm run build"
+multi-tab-recorder/public/ffmpeg/
